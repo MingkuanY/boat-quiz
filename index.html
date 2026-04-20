@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Which Boat Are You?</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #38bdf8;
+      --accent-hover: #7dd3fc;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --success: #34d399;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      padding: 24px 16px 40px;
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+    }
+
+    /* ── Progress bar ── */
+    .progress-wrap {
+      width: 100%;
+      height: 6px;
+      background: var(--card);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 32px;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+
+    /* ── Screens ── */
+    .screen { display: none; flex-direction: column; flex: 1; }
+    .screen.active { display: flex; }
+
+    /* ── Start screen ── */
+    #start-screen {
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      gap: 16px;
+    }
+    #start-screen h1 {
+      font-size: 2rem;
+      line-height: 1.2;
+    }
+    #start-screen p {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      max-width: 320px;
+    }
+
+    /* ── Quiz screen ── */
+    .question-counter {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      letter-spacing: 0.03em;
+    }
+    .question-text {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 24px;
+      line-height: 1.3;
+    }
+    .choices {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .choice-btn {
+      background: var(--card);
+      color: var(--text);
+      border: 2px solid transparent;
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      font-size: 1.05rem;
+      text-align: left;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s, transform 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .choice-btn:active {
+      border-color: var(--accent);
+      background: rgba(56, 189, 248, 0.12);
+      transform: scale(0.98);
+    }
+
+    /* ── Result screen ── */
+    #result-screen {
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      gap: 16px;
+    }
+    .result-label {
+      font-size: 1rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .result-name {
+      font-size: 2.4rem;
+      font-weight: 800;
+      color: var(--success);
+      line-height: 1.15;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: var(--radius);
+      padding: 14px 32px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      -webkit-tap-highlight-color: transparent;
+      margin-top: 12px;
+    }
+    .btn:active { background: var(--accent-hover); transform: scale(0.97); }
+
+    /* ── Fade animation ── */
+    .fade-in {
+      animation: fadeIn 0.3s ease forwards;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="progress-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+
+  <!-- Start -->
+  <div class="screen active" id="start-screen">
+    <h1>Which Boat Are You?</h1>
+    <p>Answer a few questions and find out which boat matches your personality.</p>
+    <button class="btn" id="start-btn">Start Quiz</button>
+  </div>
+
+  <!-- Quiz -->
+  <div class="screen" id="quiz-screen">
+    <div class="question-counter" id="q-counter"></div>
+    <div class="question-text" id="q-text"></div>
+    <div class="choices" id="choices"></div>
+  </div>
+
+  <!-- Result -->
+  <div class="screen" id="result-screen">
+    <div class="result-label">You are the</div>
+    <div class="result-name" id="result-name"></div>
+    <button class="btn" id="restart-btn">Retake Quiz</button>
+  </div>
+</div>
+
+<script>
+(async function () {
+  const CSV_PATH = "boat_quiz.csv";
+
+  // ── Google Form logging ──
+  // 1. Create a Google Form with one short-answer field (e.g. "Result")
+  // 2. Click the preview (eye) icon, fill in a dummy answer, and submit
+  // 3. Before submitting, open DevTools → Network tab, submit the form,
+  //    then inspect the POST request to formResponse — the form data
+  //    will show the entry field name (e.g. "entry.123456789")
+  // 4. Paste the form ID and entry ID below
+  const GFORM_URL = "";   // e.g. "https://docs.google.com/forms/d/e/XXXXX/formResponse"
+  const GFORM_FIELD = ""; // e.g. "entry.123456789"
+
+  // ── CSV parsing ──
+  function parseCSVRow(line) {
+    const cells = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+        else if (ch === '"') { inQuotes = false; }
+        else { cur += ch; }
+      } else {
+        if (ch === '"') { inQuotes = true; }
+        else if (ch === ',') { cells.push(cur); cur = ""; }
+        else { cur += ch; }
+      }
+    }
+    cells.push(cur);
+    return cells;
+  }
+
+  function parseQuiz(csvText) {
+    const lines = csvText.split(/\r?\n/).filter(l => l.trim());
+    const header = parseCSVRow(lines[0]);
+    const outcomes = header.slice(2);
+
+    const questions = [];
+    let current = null;
+
+    for (let i = 1; i < lines.length; i++) {
+      const cells = parseCSVRow(lines[i]);
+      const qName = cells[0]?.trim();
+      const choice = cells[1]?.trim();
+      if (!choice) continue;
+
+      const scores = {};
+      outcomes.forEach((o, idx) => {
+        const val = parseFloat(cells[idx + 2]);
+        scores[o] = isNaN(val) ? 0 : val;
+      });
+
+      if (qName) {
+        current = { question: qName, choices: [] };
+        questions.push(current);
+      }
+
+      if (current) {
+        current.choices.push({ label: choice, scores });
+      }
+    }
+    return { outcomes, questions };
+  }
+
+  // ── Fetch & parse ──
+  const resp = await fetch(CSV_PATH);
+  const csvText = await resp.text();
+  const quiz = parseQuiz(csvText);
+
+  // ── DOM refs ──
+  const progressBar  = document.getElementById("progress-bar");
+  const startScreen  = document.getElementById("start-screen");
+  const quizScreen   = document.getElementById("quiz-screen");
+  const resultScreen = document.getElementById("result-screen");
+  const qCounter     = document.getElementById("q-counter");
+  const qText        = document.getElementById("q-text");
+  const choicesEl    = document.getElementById("choices");
+  const resultName   = document.getElementById("result-name");
+
+  let currentQ = 0;
+  let totals = {};
+  let picks = [];
+
+  function resetTotals() {
+    totals = {};
+    quiz.outcomes.forEach(o => totals[o] = 0);
+  }
+
+  function showScreen(el) {
+    [startScreen, quizScreen, resultScreen].forEach(s => s.classList.remove("active"));
+    el.classList.add("active");
+  }
+
+  function updateProgress() {
+    const pct = (currentQ / quiz.questions.length) * 100;
+    progressBar.style.width = pct + "%";
+  }
+
+  function renderQuestion() {
+    const q = quiz.questions[currentQ];
+    qCounter.textContent = `Question ${currentQ + 1} of ${quiz.questions.length}`;
+    qText.textContent = q.question;
+    choicesEl.innerHTML = "";
+    choicesEl.classList.remove("fade-in");
+    void choicesEl.offsetWidth;
+    choicesEl.classList.add("fade-in");
+
+    q.choices.forEach((c) => {
+      const btn = document.createElement("button");
+      btn.className = "choice-btn";
+      btn.textContent = c.label;
+      btn.addEventListener("click", () => selectChoice(c));
+      choicesEl.appendChild(btn);
+    });
+
+    updateProgress();
+  }
+
+  function selectChoice(choice) {
+    quiz.outcomes.forEach(o => { totals[o] += choice.scores[o]; });
+    picks.push({ question: quiz.questions[currentQ].question, label: choice.label });
+    currentQ++;
+
+    if (currentQ >= quiz.questions.length) {
+      progressBar.style.width = "100%";
+      showResult();
+    } else {
+      renderQuestion();
+    }
+  }
+
+  function showResult() {
+    showScreen(resultScreen);
+
+    const pickedCharles = picks.some(p => p.question === "Fav regatta" && p.label === "Charles");
+    const pickedVegas = picks.some(p => p.question === "My fundraising plan for GT Crew:" && p.label === "Going to Vegas");
+
+    let winner;
+    if (pickedCharles && pickedVegas) {
+      winner = "Lobos";
+    } else {
+      winner = quiz.outcomes.reduce((best, o) =>
+        totals[o] > totals[best] ? o : best
+      , quiz.outcomes[0]);
+    }
+
+    resultName.textContent = winner;
+
+    if (GFORM_URL && GFORM_FIELD) {
+      fetch(GFORM_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: GFORM_FIELD + "=" + encodeURIComponent(winner)
+      }).catch(() => {});
+    }
+  }
+
+  // ── Event listeners ──
+  document.getElementById("start-btn").addEventListener("click", () => {
+    currentQ = 0;
+    resetTotals();
+    picks = [];
+    showScreen(quizScreen);
+    renderQuestion();
+  });
+
+  document.getElementById("restart-btn").addEventListener("click", () => {
+    currentQ = 0;
+    resetTotals();
+    picks = [];
+    progressBar.style.width = "0%";
+    showScreen(quizScreen);
+    renderQuestion();
+  });
+})();
+</script>
+
+</body>
+</html>
