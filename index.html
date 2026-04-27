@@ -1,372 +1,519 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Which Boat Are You?</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --bg: #0f172a;
-      --card: #1e293b;
-      --accent: #38bdf8;
-      --accent-hover: #7dd3fc;
-      --text: #f1f5f9;
-      --text-muted: #94a3b8;
-      --success: #34d399;
-      --radius: 12px;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100dvh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-
-    .container {
-      width: 100%;
-      max-width: 480px;
-      padding: 24px 16px 40px;
-      display: flex;
-      flex-direction: column;
-      min-height: 100dvh;
-    }
-
-    /* ── Progress bar ── */
-    .progress-wrap {
-      width: 100%;
-      height: 6px;
-      background: var(--card);
-      border-radius: 3px;
-      overflow: hidden;
-      margin-bottom: 32px;
-    }
-    .progress-bar {
-      height: 100%;
-      width: 0%;
-      background: var(--accent);
-      border-radius: 3px;
-      transition: width 0.4s ease;
-    }
-
-    /* ── Screens ── */
-    .screen { display: none; flex-direction: column; flex: 1; }
-    .screen.active { display: flex; }
-
-    /* ── Start screen ── */
-    #start-screen {
-      justify-content: center;
-      align-items: center;
-      text-align: center;
-      gap: 16px;
-    }
-    #start-screen h1 {
-      font-size: 2rem;
-      line-height: 1.2;
-    }
-    #start-screen p {
-      color: var(--text-muted);
-      font-size: 1.05rem;
-      max-width: 320px;
-    }
-
-    /* ── Quiz screen ── */
-    .question-counter {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      margin-bottom: 8px;
-      letter-spacing: 0.03em;
-    }
-    .question-text {
-      font-size: 1.35rem;
-      font-weight: 700;
-      margin-bottom: 24px;
-      line-height: 1.3;
-    }
-    .choices {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .choice-btn {
-      background: var(--card);
-      color: var(--text);
-      border: 2px solid transparent;
-      border-radius: var(--radius);
-      padding: 14px 18px;
-      font-size: 1.05rem;
-      text-align: left;
-      cursor: pointer;
-      transition: border-color 0.2s, background 0.2s, transform 0.1s;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .choice-btn:active {
-      border-color: var(--accent);
-      background: rgba(56, 189, 248, 0.12);
-      transform: scale(0.98);
-    }
-
-    /* ── Result screen ── */
-    #result-screen {
-      justify-content: center;
-      align-items: center;
-      text-align: center;
-      gap: 16px;
-    }
-    .result-label {
-      font-size: 1rem;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-    .result-name {
-      font-size: 2.4rem;
-      font-weight: 800;
-      color: var(--success);
-      line-height: 1.15;
-    }
-
-    /* ── Buttons ── */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--accent);
-      color: var(--bg);
-      border: none;
-      border-radius: var(--radius);
-      padding: 14px 32px;
-      font-size: 1.1rem;
-      font-weight: 700;
-      cursor: pointer;
-      transition: background 0.2s, transform 0.1s;
-      -webkit-tap-highlight-color: transparent;
-      margin-top: 12px;
-    }
-    .btn:active { background: var(--accent-hover); transform: scale(0.97); }
-
-    /* ── Fade animation ── */
-    .fade-in {
-      animation: fadeIn 0.3s ease forwards;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(12px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-  </style>
-</head>
-<body>
-
-<div class="container">
-  <div class="progress-wrap"><div class="progress-bar" id="progress-bar"></div></div>
-
-  <!-- Start -->
-  <div class="screen active" id="start-screen">
-    <h1>Which Boat Are You?</h1>
-    <p>Answer a few questions and find out which boat matches your personality.</p>
-    <button class="btn" id="start-btn">Start Quiz</button>
-  </div>
-
-  <!-- Quiz -->
-  <div class="screen" id="quiz-screen">
-    <div class="question-counter" id="q-counter"></div>
-    <div class="question-text" id="q-text"></div>
-    <div class="choices" id="choices"></div>
-  </div>
-
-  <!-- Result -->
-  <div class="screen" id="result-screen">
-    <div class="result-label">You are the</div>
-    <div class="result-name" id="result-name"></div>
-    <button class="btn" id="restart-btn">Retake Quiz</button>
-  </div>
-</div>
-
-<script>
-(async function () {
-  const CSV_PATH = "boat_quiz.csv";
-
-  // ── Google Form logging ──
-  // 1. Create a Google Form with one short-answer field (e.g. "Result")
-  // 2. Click the preview (eye) icon, fill in a dummy answer, and submit
-  // 3. Before submitting, open DevTools → Network tab, submit the form,
-  //    then inspect the POST request to formResponse — the form data
-  //    will show the entry field name (e.g. "entry.123456789")
-  // 4. Paste the form ID and entry ID below
-  const GFORM_URL = "";   // e.g. "https://docs.google.com/forms/d/e/XXXXX/formResponse"
-  const GFORM_FIELD = ""; // e.g. "entry.123456789"
-
-  // ── CSV parsing ──
-  function parseCSVRow(line) {
-    const cells = [];
-    let cur = "";
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (inQuotes) {
-        if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
-        else if (ch === '"') { inQuotes = false; }
-        else { cur += ch; }
-      } else {
-        if (ch === '"') { inQuotes = true; }
-        else if (ch === ',') { cells.push(cur); cur = ""; }
-        else { cur += ch; }
-      }
-    }
-    cells.push(cur);
-    return cells;
-  }
-
-  function parseQuiz(csvText) {
-    const lines = csvText.split(/\r?\n/).filter(l => l.trim());
-    const header = parseCSVRow(lines[0]);
-    const outcomes = header.slice(2);
-
-    const questions = [];
-    let current = null;
-
-    for (let i = 1; i < lines.length; i++) {
-      const cells = parseCSVRow(lines[i]);
-      const qName = cells[0]?.trim();
-      const choice = cells[1]?.trim();
-      if (!choice) continue;
-
-      const scores = {};
-      outcomes.forEach((o, idx) => {
-        const val = parseFloat(cells[idx + 2]);
-        scores[o] = isNaN(val) ? 0 : val;
-      });
-
-      if (qName) {
-        current = { question: qName, choices: [] };
-        questions.push(current);
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Which Boat Are You?</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
       }
 
-      if (current) {
-        current.choices.push({ label: choice, scores });
+      :root {
+        --bg: #0f172a;
+        --card: #1e293b;
+        --accent: #38bdf8;
+        --accent-hover: #7dd3fc;
+        --text: #f1f5f9;
+        --text-muted: #94a3b8;
+        --success: #34d399;
+        --radius: 12px;
       }
-    }
-    return { outcomes, questions };
-  }
 
-  // ── Fetch & parse ──
-  const resp = await fetch(CSV_PATH);
-  const csvText = await resp.text();
-  const quiz = parseQuiz(csvText);
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
 
-  // ── DOM refs ──
-  const progressBar  = document.getElementById("progress-bar");
-  const startScreen  = document.getElementById("start-screen");
-  const quizScreen   = document.getElementById("quiz-screen");
-  const resultScreen = document.getElementById("result-screen");
-  const qCounter     = document.getElementById("q-counter");
-  const qText        = document.getElementById("q-text");
-  const choicesEl    = document.getElementById("choices");
-  const resultName   = document.getElementById("result-name");
+      .container {
+        width: 100%;
+        max-width: 480px;
+        padding: 24px 16px 40px;
+        display: flex;
+        flex-direction: column;
+        min-height: 100dvh;
+      }
 
-  let currentQ = 0;
-  let totals = {};
-  let picks = [];
+      /* ── Progress bar ── */
+      .progress-wrap {
+        width: 100%;
+        height: 6px;
+        background: var(--card);
+        border-radius: 3px;
+        overflow: hidden;
+        margin-bottom: 32px;
+      }
+      .progress-bar {
+        height: 100%;
+        width: 0%;
+        background: var(--accent);
+        border-radius: 3px;
+        transition: width 0.4s ease;
+      }
 
-  function resetTotals() {
-    totals = {};
-    quiz.outcomes.forEach(o => totals[o] = 0);
-  }
+      /* ── Screens ── */
+      .screen {
+        display: none;
+        flex-direction: column;
+        flex: 1;
+      }
+      .screen.active {
+        display: flex;
+      }
 
-  function showScreen(el) {
-    [startScreen, quizScreen, resultScreen].forEach(s => s.classList.remove("active"));
-    el.classList.add("active");
-  }
+      /* ── Start screen ── */
+      #start-screen {
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        gap: 16px;
+      }
+      #start-screen h1 {
+        font-size: 2rem;
+        line-height: 1.2;
+      }
+      #start-screen p {
+        color: var(--text-muted);
+        font-size: 1.05rem;
+        max-width: 320px;
+      }
 
-  function updateProgress() {
-    const pct = (currentQ / quiz.questions.length) * 100;
-    progressBar.style.width = pct + "%";
-  }
+      /* ── Quiz screen ── */
+      .question-counter {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+        letter-spacing: 0.03em;
+      }
+      .question-text {
+        font-size: 1.35rem;
+        font-weight: 700;
+        margin-bottom: 24px;
+        line-height: 1.3;
+      }
+      .choices {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .choice-btn {
+        background: var(--card);
+        color: var(--text);
+        border: 2px solid transparent;
+        border-radius: var(--radius);
+        padding: 14px 18px;
+        font-size: 1.05rem;
+        text-align: left;
+        cursor: pointer;
+        transition:
+          border-color 0.2s,
+          background 0.2s,
+          transform 0.1s;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .choice-btn:active {
+        border-color: var(--accent);
+        background: rgba(56, 189, 248, 0.12);
+        transform: scale(0.98);
+      }
 
-  function renderQuestion() {
-    const q = quiz.questions[currentQ];
-    qCounter.textContent = `Question ${currentQ + 1} of ${quiz.questions.length}`;
-    qText.textContent = q.question;
-    choicesEl.innerHTML = "";
-    choicesEl.classList.remove("fade-in");
-    void choicesEl.offsetWidth;
-    choicesEl.classList.add("fade-in");
+      /* ── Result screen ── */
+      #result-screen {
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        gap: 16px;
+      }
+      .result-label {
+        font-size: 1rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .result-name {
+        font-size: 2.4rem;
+        font-weight: 800;
+        color: var(--success);
+        line-height: 1.15;
+      }
+      .result-desc {
+        font-size: 1rem;
+        color: var(--text-muted);
+        max-width: 340px;
+        line-height: 1.5;
+      }
 
-    q.choices.forEach((c) => {
-      const btn = document.createElement("button");
-      btn.className = "choice-btn";
-      btn.textContent = c.label;
-      btn.addEventListener("click", () => selectChoice(c));
-      choicesEl.appendChild(btn);
-    });
+      /* ── Buttons ── */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--accent);
+        color: var(--bg);
+        border: none;
+        border-radius: var(--radius);
+        padding: 14px 32px;
+        font-size: 1.1rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition:
+          background 0.2s,
+          transform 0.1s;
+        -webkit-tap-highlight-color: transparent;
+        margin-top: 12px;
+      }
+      .btn:active {
+        background: var(--accent-hover);
+        transform: scale(0.97);
+      }
 
-    updateProgress();
-  }
+      /* ── Fade animation ── */
+      .fade-in {
+        animation: fadeIn 0.3s ease forwards;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="progress-wrap">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
 
-  function selectChoice(choice) {
-    quiz.outcomes.forEach(o => { totals[o] += choice.scores[o]; });
-    picks.push({ question: quiz.questions[currentQ].question, label: choice.label });
-    currentQ++;
+      <!-- Start -->
+      <div class="screen active" id="start-screen">
+        <h1>Which Boat Are You?</h1>
+        <p>
+          Answer a few questions and find out which boat matches your
+          personality.
+        </p>
+        <button class="btn" id="start-btn">Start Quiz</button>
+      </div>
 
-    if (currentQ >= quiz.questions.length) {
-      progressBar.style.width = "100%";
-      showResult();
-    } else {
-      renderQuestion();
-    }
-  }
+      <!-- Quiz -->
+      <div class="screen" id="quiz-screen">
+        <div class="question-counter" id="q-counter"></div>
+        <div class="question-text" id="q-text"></div>
+        <div class="choices" id="choices"></div>
+      </div>
 
-  function showResult() {
-    showScreen(resultScreen);
+      <!-- Result -->
+      <div class="screen" id="result-screen">
+        <div class="result-label">You are the</div>
+        <div class="result-name" id="result-name"></div>
+        <div class="result-desc" id="result-desc"></div>
+        <button class="btn" id="restart-btn">Retake Quiz</button>
+      </div>
+    </div>
 
-    const pickedCharles = picks.some(p => p.question === "Fav regatta" && p.label === "Charles");
-    const pickedVegas = picks.some(p => p.question === "My fundraising plan for GT Crew:" && p.label === "Going to Vegas");
+    <script>
+      (async function () {
+        const CSV_PATH = "boat_quiz.csv";
 
-    let winner;
-    if (pickedCharles && pickedVegas) {
-      winner = "Lobos";
-    } else {
-      winner = quiz.outcomes.reduce((best, o) =>
-        totals[o] > totals[best] ? o : best
-      , quiz.outcomes[0]);
-    }
+        // ── Google Form logging ──
+        // 1. Create a Google Form with one short-answer field (e.g. "Result")
+        // 2. Click the preview (eye) icon, fill in a dummy answer, and submit
+        // 3. Before submitting, open DevTools → Network tab, submit the form,
+        //    then inspect the POST request to formResponse — the form data
+        //    will show the entry field name (e.g. "entry.123456789")
+        // 4. Paste the form ID and entry ID below
+        const GFORM_URL = ""; // e.g. "https://docs.google.com/forms/d/e/XXXXX/formResponse"
+        const GFORM_FIELD = ""; // e.g. "entry.123456789"
 
-    resultName.textContent = winner;
+        // ── CSV parsing ──
+        function parseCSVRow(line) {
+          const cells = [];
+          let cur = "";
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (inQuotes) {
+              if (ch === '"' && line[i + 1] === '"') {
+                cur += '"';
+                i++;
+              } else if (ch === '"') {
+                inQuotes = false;
+              } else {
+                cur += ch;
+              }
+            } else {
+              if (ch === '"') {
+                inQuotes = true;
+              } else if (ch === ",") {
+                cells.push(cur);
+                cur = "";
+              } else {
+                cur += ch;
+              }
+            }
+          }
+          cells.push(cur);
+          return cells;
+        }
 
-    if (GFORM_URL && GFORM_FIELD) {
-      fetch(GFORM_URL, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: GFORM_FIELD + "=" + encodeURIComponent(winner)
-      }).catch(() => {});
-    }
-  }
+        function parseQuiz(csvText) {
+          const lines = csvText.split(/\r?\n/).filter((l) => l.trim());
+          const header = parseCSVRow(lines[0]);
+          const outcomes = header.slice(2);
 
-  // ── Event listeners ──
-  document.getElementById("start-btn").addEventListener("click", () => {
-    currentQ = 0;
-    resetTotals();
-    picks = [];
-    showScreen(quizScreen);
-    renderQuestion();
-  });
+          const questions = [];
+          let current = null;
 
-  document.getElementById("restart-btn").addEventListener("click", () => {
-    currentQ = 0;
-    resetTotals();
-    picks = [];
-    progressBar.style.width = "0%";
-    showScreen(quizScreen);
-    renderQuestion();
-  });
-})();
-</script>
+          for (let i = 1; i < lines.length; i++) {
+            const cells = parseCSVRow(lines[i]);
+            const qName = cells[0]?.trim();
+            const choice = cells[1]?.trim();
+            if (!choice) continue;
 
-</body>
+            const scores = {};
+            outcomes.forEach((o, idx) => {
+              const val = parseFloat(cells[idx + 2]);
+              scores[o] = isNaN(val) ? 0 : val;
+            });
+
+            if (qName) {
+              current = { question: qName, choices: [] };
+              questions.push(current);
+            }
+
+            if (current) {
+              current.choices.push({ label: choice, scores });
+            }
+          }
+          return { outcomes, questions };
+        }
+
+        // ── Fetch & parse ──
+        const resp = await fetch(CSV_PATH);
+        const csvText = await resp.text();
+        const quiz = parseQuiz(csvText);
+
+        // ── DOM refs ──
+        const progressBar = document.getElementById("progress-bar");
+        const startScreen = document.getElementById("start-screen");
+        const quizScreen = document.getElementById("quiz-screen");
+        const resultScreen = document.getElementById("result-screen");
+        const qCounter = document.getElementById("q-counter");
+        const qText = document.getElementById("q-text");
+        const choicesEl = document.getElementById("choices");
+        const resultName = document.getElementById("result-name");
+        const resultDesc = document.getElementById("result-desc");
+
+        const BOAT_INFO = {
+          Deb: {
+            full: "Debbie Permenter",
+            desc: "Named after team founder Debbie Permenter.",
+          },
+          Barb: {
+            full: "Barbara, Elizabeth, & Shirley",
+            desc: "Named after Barbara Diane Michel, Elizabeth Herndon, and Shirley Clements Mewborn who were the first women to graduate Georgia Tech.",
+          },
+          June: {
+            full: "June Weitnauer",
+            desc: "In memory of June Weitnauer. She and her husband, John Hunter, aided the team since 1988.",
+          },
+          Owens: {
+            full: "Catherine Owens",
+            desc: "In memory of student rower and GTCA president Catherine Owens.",
+          },
+          Woodburn: {
+            full: "Woodburn",
+            desc: "In memory of student rower Catherine Woodburn.",
+          },
+          Reg: {
+            full: "Regulator",
+            desc: "Named by the GTCA via online voting. Also the name of our annual news article.",
+          },
+          97: {
+            full: "\u201997 Lightweight 8+",
+            desc: "Named after the \u201997 Lightweight 8+, the first GT boat to attend IRAs.",
+          },
+          Canavan: {
+            full: "Rob Canavan",
+            desc: "In honor of the longest-tenured head coach for GT: Coach Rob Canavan.",
+          },
+          Perry: {
+            full: "Daniel J. Perry",
+            desc: "In memory of student rower Daniel J Perry.",
+          },
+          Beaver: {
+            full: "Diligent Beaver",
+            desc: "A boat named after an animal.",
+          },
+          Mamba: { full: "Black Mamba", desc: "A boat named after an animal." },
+          Slim: {
+            full: "Slim",
+            desc: "In honor of former rower and coach Slim Price. Rowed from 1997\u20132001. Coached the Men from 2002 through 2013.",
+          },
+          Edmonds: {
+            full: "Edmonds",
+            desc: "In memory of student rower Brian Edmonds.",
+          },
+          Phoon: {
+            full: "Typhoon Linda",
+            desc: "Named after Douglas Crucet\u2019s wife, Linda.",
+          },
+          Gini: {
+            full: "Gini Ann",
+            desc: "In honor of Gini Ann Loeffler, mother to rowers Ben and Matthew Loeffler, after many years of service as Spring Training cook and Team Mom.",
+          },
+          Laoch: {
+            full: "Laoch",
+            desc: "Scottish Gaelic word for \u201CHero, Champion, and Warrior.\u201D",
+          },
+          Heath: {
+            full: "Dr. Heath",
+            desc: "Named after Dr. Dianne Heath. She was the club\u2019s advisor until 2022 and a STAMPS doctor.",
+          },
+          Arg: { full: "Arg", desc: "2008 Worlds 2- for Argentina." },
+          Brinker: {
+            full: "Brinker-Uys",
+            desc: "Named after Peter Brinker-Uys, a benefactor of the team.",
+          },
+          "Midnight Rambler": {
+            full: "Midnight Rambler",
+            desc: "Named after GT\u2019s Midnight Rambler bus route that operates during the late night hours every day during fall and spring semesters.",
+          },
+          Nina: {
+            full: "Nina Keri",
+            desc: "Donated 1x to club named for the donor\u2019s family member.",
+          },
+          launch: { full: "launch", desc: "Hopefully you\u2019re a coach." },
+          Lobos: { full: "Lobos", desc: "A boat named after an animal." },
+        };
+
+        let currentQ = 0;
+        let totals = {};
+        let picks = [];
+
+        function resetTotals() {
+          totals = {};
+          quiz.outcomes.forEach((o) => (totals[o] = 0));
+        }
+
+        function showScreen(el) {
+          [startScreen, quizScreen, resultScreen].forEach((s) =>
+            s.classList.remove("active"),
+          );
+          el.classList.add("active");
+        }
+
+        function updateProgress() {
+          const pct = (currentQ / quiz.questions.length) * 100;
+          progressBar.style.width = pct + "%";
+        }
+
+        function renderQuestion() {
+          const q = quiz.questions[currentQ];
+          qCounter.textContent = `Question ${currentQ + 1} of ${quiz.questions.length}`;
+          qText.textContent = q.question;
+          choicesEl.innerHTML = "";
+          choicesEl.classList.remove("fade-in");
+          void choicesEl.offsetWidth;
+          choicesEl.classList.add("fade-in");
+
+          q.choices.forEach((c) => {
+            const btn = document.createElement("button");
+            btn.className = "choice-btn";
+            btn.textContent = c.label;
+            btn.addEventListener("click", () => selectChoice(c));
+            choicesEl.appendChild(btn);
+          });
+
+          updateProgress();
+        }
+
+        function selectChoice(choice) {
+          quiz.outcomes.forEach((o) => {
+            totals[o] += choice.scores[o];
+          });
+          picks.push({
+            question: quiz.questions[currentQ].question,
+            label: choice.label,
+          });
+          currentQ++;
+
+          if (currentQ >= quiz.questions.length) {
+            progressBar.style.width = "100%";
+            showResult();
+          } else {
+            renderQuestion();
+          }
+        }
+
+        function showResult() {
+          showScreen(resultScreen);
+
+          const pickedCharles = picks.some(
+            (p) => p.question === "Fav regatta" && p.label === "Charles",
+          );
+          const pickedVegas = picks.some(
+            (p) =>
+              p.question === "My fundraising plan for GT Crew:" &&
+              p.label === "Going to Vegas",
+          );
+
+          let winner;
+          if (pickedCharles && pickedVegas) {
+            winner = "Lobos";
+          } else {
+            winner = quiz.outcomes.reduce(
+              (best, o) => (totals[o] > totals[best] ? o : best),
+              quiz.outcomes[0],
+            );
+          }
+
+          const info = BOAT_INFO[winner];
+          resultName.textContent = info ? info.full : winner;
+          resultDesc.textContent = info ? info.desc : "";
+
+          if (GFORM_URL && GFORM_FIELD) {
+            fetch(GFORM_URL, {
+              method: "POST",
+              mode: "no-cors",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: GFORM_FIELD + "=" + encodeURIComponent(winner),
+            }).catch(() => {});
+          }
+        }
+
+        // ── Event listeners ──
+        document.getElementById("start-btn").addEventListener("click", () => {
+          currentQ = 0;
+          resetTotals();
+          picks = [];
+          showScreen(quizScreen);
+          renderQuestion();
+        });
+
+        document.getElementById("restart-btn").addEventListener("click", () => {
+          currentQ = 0;
+          resetTotals();
+          picks = [];
+          progressBar.style.width = "0%";
+          showScreen(quizScreen);
+          renderQuestion();
+        });
+      })();
+    </script>
+  </body>
 </html>
